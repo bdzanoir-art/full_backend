@@ -1,0 +1,187 @@
+[
+{
+  "model": "inventory.category",
+  "pk": 1,
+  "fields": {
+    "name": "Microcontrollers",
+    "key": "microcontrollers"
+  }
+},
+{
+  "model": "inventory.category",
+  "pk": 2,
+  "fields": {
+    "name": "Development Boards",
+    "key": "development-boards"
+  }
+},
+{
+  "model": "inventory.category",
+  "pk": 3,
+  "fields": {
+    "name": "Networking",
+    "key": "networking"
+  }
+},
+{
+  "model": "inventory.category",
+  "pk": 4,
+  "fields": {
+    "name": "Sensors",
+    "key": "sensors"
+  }
+},
+{
+  "model": "inventory.category",
+  "pk": 5,
+  "fields": {
+    "name": "Power Supplies",
+    "key": "power-supplies"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 2,
+  "fields": {
+    "title": "Arduino Nano",
+    "description": "Compact AVR-based board with USB connectivity, perfect for small projects.",
+    "category": 1,
+    "location": "Room A - Shelf 1",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.576Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 3,
+  "fields": {
+    "title": "ATmega328P (DIP)",
+    "description": "Standalone 8-bit AVR MCU used in Arduino Uno, available as bare IC.",
+    "category": 1,
+    "location": "Room A - Shelf 2",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.586Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 4,
+  "fields": {
+    "title": "STM32F103C8 (Blue Pill)",
+    "description": "32-bit ARM Cortex-M3 microcontroller with abundant peripherals.",
+    "category": 1,
+    "location": "Room A - Shelf 3",
+    "status": "In Use",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.596Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 5,
+  "fields": {
+    "title": "Raspberry Pi 4 Model B",
+    "description": "Quad-core 64-bit SBC running Linux, 4 GB RAM. Great for IoT gateways.",
+    "category": 2,
+    "location": "Room B - Shelf 1",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.605Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 6,
+  "fields": {
+    "title": "ESP32 DevKit V1",
+    "description": "Dual-core board with integrated Wi-Fi and Bluetooth 4.2.",
+    "category": 2,
+    "location": "Room B - Shelf 2",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.615Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 7,
+  "fields": {
+    "title": "BeagleBone Black",
+    "description": "AM335x ARM Cortex-A8 SBC with 512 MB RAM and PRU sub-processors.",
+    "category": 2,
+    "location": "Room B - Shelf 3",
+    "status": "Maintenance",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.625Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 8,
+  "fields": {
+    "title": "NodeMCU (ESP8266)",
+    "description": "Wi-Fi enabled development board based on the ESP8266 chip.",
+    "category": 2,
+    "location": "Room B - Shelf 2",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.634Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 9,
+  "fields": {
+    "title": "TP-Link TL-WR841N Router",
+    "description": "300 Mbps wireless N router, suitable for lab network experiments.",
+    "category": 3,
+    "location": "Room C - Shelf 1",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.646Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 10,
+  "fields": {
+    "title": "Cisco SG110-16 Switch",
+    "description": "16-port unmanaged Gigabit Ethernet switch for structured wired networks.",
+    "category": 3,
+    "location": "Room C - Shelf 1",
+    "status": "In Use",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.656Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 11,
+  "fields": {
+    "title": "USB Wi-Fi Adapter (AC600)",
+    "description": "Dual-band 802.11ac USB adapter for PC/laptop wireless connectivity.",
+    "category": 3,
+    "location": "Room C - Shelf 2",
+    "status": "Available",
+    "quantity": 10,
+    "image": "",
+    "created_at": "2026-04-14T23:07:16.665Z"
+  }
+},
+{
+  "model": "inventory.material",
+  "pk": 12,
+  "fields": {
+    "title": "DHT22 Temperature & Humidity",
+    "description": 
