@@ -4,6 +4,7 @@ All views: auth (register/login/logout/profile), dashboard,
 projects, materials, laboratories, material outputs, maintenance.
 """
 
+import os
 from datetime import timedelta
 
 from django.contrib.auth.models import User
@@ -18,13 +19,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import (
     Student, Project, TeamMembers, Material, Laboratory,
-    MaterialOutput, MaterialRequest, MaintenanceRecord, MaintenanceAlert, UserProfile
+    MaterialOutput, MaterialRequest, MaintenanceRecord, MaintenanceAlert, UserProfile,
+    Transfer, TransferItem, Category, SystemSetting
 )
 from .serializers import (
     StudentSerializer, ProjectSerializer, TeamMembersSerializer,
     MaterialSerializer, LaboratorySerializer, MaterialOutputSerializer,
     MaterialRequestSerializer, MaintenanceRecordSerializer, MaintenanceAlertSerializer,
     RegisterSerializer, LoginSerializer, UserManagementSerializer,
+    CategorySerializer, SystemSettingSerializer,
 )
 
 
@@ -105,11 +108,21 @@ def login(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def profile(request):
-    return Response({'user': {
-        'id': request.user.id,
-        'username': request.user.username,
-        'email': request.user.email,
-    }})
+    user = request.user
+    role = 'Student'
+    try:
+        role = user.userprofile.role
+    except Exception:
+        pass
+    return Response({
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'full_name': user.get_full_name() or user.username,
+        'role': role,
+    })
 
 
 @api_view(['POST'])
@@ -143,15 +156,17 @@ def super_admin_stats(request):
     laboratories_data = []
     for lab in labs:
         materials_count = Material.objects.filter(location=lab.name).count()
-        # Find if there is a lab admin for this lab
-        # Placeholder: assign an admin name or 'N/A'
+        admin_n = "N/A"
+        if lab.admin:
+            admin_n = f"{lab.admin.first_name} {lab.admin.last_name}".strip() or lab.admin.username
+            
         laboratories_data.append({
             'id': lab.id,
             'name': lab.name,
             'location': lab.location,
             'materials_count': materials_count,
-            'capacity': 50, # Placeholder for capacity
-            'admin_name': "N/A" # Placeholder
+            'capacity': 50,
+            'admin_name': admin_n
         })
 
     return Response({
@@ -264,25 +279,26 @@ def user_management_detail(request, user_id):
 # ═══════════════════════════════════════════════════════════════════
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def StudentDashboard(request):
-    student_id = request.GET.get('student_id')
-    if student_id:
-        projects = Project.objects.filter(student_id=student_id)
-        all_requests = MaterialRequest.objects.filter(project__student_id=student_id)
-    else:
-        projects = Project.objects.all()
-        all_requests = MaterialRequest.objects.all()
+    try:
+        student = Student.objects.get(user=request.user)
+        projects = Project.objects.filter(student=student)
+        all_requests = MaterialRequest.objects.filter(student=student)
+    except Student.DoesNotExist:
+        projects = Project.objects.none()
+        all_requests = MaterialRequest.objects.none()
 
     recent_projects = projects.order_by('-created_at')[:5]
     recent_requests = all_requests.order_by('-created_at')[:5]
 
     return Response({
         'stats': {
-            'my_projects': projects.count(),
+            'active_projects': projects.count(),
             'total_requests': all_requests.count(),
             'browse_materials': Material.objects.count(),
-            'approved_requests': all_requests.filter(status='approved').count(),
-            'pending_requests': all_requests.filter(status='pending').count(),
+            'approved_requests': all_requests.filter(status__iexact='approved').count(),
+            'pending_requests': all_requests.filter(status__iexact='pending').count(),
         },
         'projects': ProjectSerializer(projects, many=True).data,
         'recent_projects': ProjectSerializer(recent_projects, many=True).data,
@@ -295,39 +311,41 @@ def StudentDashboard(request):
 # ═══════════════════════════════════════════════════════════════════
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_project(request):
     data = request.data
-    student_id = data.get('student_id')
-    if not student_id:
-        return Response({'error': 'student_id is required'}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        student = Student.objects.get(id=student_id)
+        student = Student.objects.get(user=request.user)
+    except Student.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+    try:
         project = Project.objects.create(
-            student=student, name=data['name'], description=data.get('description', '')
+            student=student, 
+            name=data.get('name', 'New Project'), 
+            description=data.get('description', '')
         )
         for member in data.get('team_members', []):
             TeamMembers.objects.create(project=project, name=member['name'], email=member['email'])
         return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
-    except Student.DoesNotExist:
-        return Response({'error': f'Student {student_id} not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_all_projects(request):
-    student_id = request.GET.get('student_id')
-    if student_id:
-        try:
-            projects = Project.objects.filter(student_id=int(student_id)).order_by('-created_at')
-        except ValueError:
-            projects = Project.objects.none()
-    else:
-        projects = Project.objects.all().order_by('-created_at')
+    try:
+        student = Student.objects.get(user=request.user)
+        projects = Project.objects.filter(student=student).order_by('-created_at')
+    except Student.DoesNotExist:
+        projects = Project.objects.none()
+    
     return Response(ProjectSerializer(projects, many=True).data)
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def get_project_details(request, project_id):
     try:
         return Response(ProjectSerializer(Project.objects.get(id=project_id)).data)
@@ -336,6 +354,7 @@ def get_project_details(request, project_id):
 
 
 @api_view(['PUT'])
+@permission_classes([AllowAny])
 def update_project(request, project_id):
     try:
         project = Project.objects.get(id=project_id)
@@ -348,6 +367,7 @@ def update_project(request, project_id):
 
 
 @api_view(['DELETE'])
+@permission_classes([AllowAny])
 def delete_project(request, project_id):
     try:
         Project.objects.get(id=project_id).delete()
@@ -357,6 +377,7 @@ def delete_project(request, project_id):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def add_team_member(request, project_id):
     try:
         project = Project.objects.get(id=project_id)
@@ -371,6 +392,7 @@ def add_team_member(request, project_id):
 
 
 @api_view(['DELETE'])
+@permission_classes([AllowAny])
 def delete_team_member(request, project_id, member_id):
     try:
         TeamMembers.objects.get(id=member_id, project_id=project_id).delete()
@@ -412,6 +434,28 @@ def laboratory_list(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def laboratory_detail(request, lab_id):
+    try:
+        lab = Laboratory.objects.get(id=lab_id)
+    except Laboratory.DoesNotExist:
+        return Response({'error': 'Laboratory not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(LaboratorySerializer(lab).data)
+
+    if request.method in ['PUT', 'PATCH']:
+        serializer = LaboratorySerializer(lab, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == 'DELETE':
+        lab.delete()
+        return Response({'message': 'Laboratory deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+
+
 # ═══════════════════════════════════════════════════════════════════
 # MATERIAL OUTPUTS
 # ═══════════════════════════════════════════════════════════════════
@@ -419,19 +463,88 @@ def laboratory_list(request):
 @api_view(['GET', 'POST'])
 def material_output_list(request):
     if request.method == 'GET':
+        lab_id = request.GET.get('laboratory')
+        status = request.GET.get('status')
+        search = request.GET.get('search')
+
+        # 1. Fetch MaterialOutputs
         outputs = MaterialOutput.objects.all().order_by('-issued_date')
-        if lab_id := request.GET.get('laboratory'):
+        if lab_id:
             outputs = outputs.filter(laboratory_id=lab_id)
-        if sf := request.GET.get('status'):
-            outputs = outputs.filter(status=sf)
-        if search := request.GET.get('search'):
+        if status:
+            outputs = outputs.filter(status=status)
+        if search:
             outputs = outputs.filter(
                 Q(material__name__icontains=search) |
                 Q(student__name__icontains=search) |
-                Q(project__name__icontains=search) |
-                Q(qr_code__icontains=search)
+                Q(project__name__icontains=search)
             )
-        return Response(MaterialOutputSerializer(outputs, many=True).data)
+        
+        output_data = MaterialOutputSerializer(outputs, many=True).data
+
+        # 2. Fetch Transfers and convert to "Output" format
+        transfers = Transfer.objects.all().order_by('-created_at')
+        # If filtering by lab, check from_lab
+        if lab_id:
+            try:
+                lab_name = Laboratory.objects.get(id=lab_id).name
+                transfers = transfers.filter(from_lab=lab_name)
+            except Laboratory.DoesNotExist:
+                pass
+        
+        # Filter transfers by status if applicable
+        if status == 'transferred' or not status:
+            # All valid transfers are technically "transferred" outputs
+            transfer_outputs = []
+            for t in transfers:
+                if t.status == 'rejected': continue
+                # Each material in the transfer is an output
+                for item in t.materials.all():
+                    # Simple search on transfer items
+                    if search and search.lower() not in item.name.lower(): continue
+
+                    transfer_outputs.append({
+                        'id': f"T-{t.id}-{item.id}",
+                        'material_name': item.name,
+                        'quantity': item.quantity,
+                        'laboratory_name': t.from_lab,
+                        'transferred_to_name': t.to_lab,
+                        'issued_date': t.created_at.strftime("%Y-%m-%d"),
+                        'status': 'transferred',
+                        'condition': 'excellent',
+                        'notes': t.reason,
+                        'recipient_name': t.to_lab # Display destination lab as recipient
+                    })
+            output_data.extend(transfer_outputs)
+            
+        # 3. Fetch "In Use" requests and convert to "Output" format
+        in_use_requests = MaterialRequest.objects.filter(status='in use').order_by('-updated_at')
+        
+        # Filter requests by status if applicable
+        if status == 'borrowed' or not status:
+            req_outputs = []
+            for r in in_use_requests:
+                # Material might be null if using standalone fields
+                mat_name = r.material.name if r.material else r.project_name
+                # Simple search
+                if search and search.lower() not in mat_name.lower(): continue
+
+                req_outputs.append({
+                    'id': f"R-{r.id}",
+                    'material_name': mat_name,
+                    'quantity': r.quantity,
+                    'laboratory_name': "Main Lab", # Default if not specified in request
+                    'student_name': r.requester_name or (r.student.name if r.student else "Unknown"),
+                    'project_name': r.project_name,
+                    'issued_date': r.updated_at.strftime("%Y-%m-%d"),
+                    'status': 'borrowed',
+                    'condition': 'good', # Default
+                    'notes': r.purpose,
+                    'recipient_name': r.requester_name or "Student"
+                })
+            output_data.extend(req_outputs)
+
+        return Response(output_data)
     serializer = MaterialOutputSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
@@ -476,12 +589,22 @@ def return_material(request, output_id):
 @api_view(['GET'])
 def material_output_stats(request):
     outputs = MaterialOutput.objects.all()
+    transfers = Transfer.objects.exclude(status='rejected')
+    active_requests = MaterialRequest.objects.filter(status='in use')
+    
+    # Calculate combined stats
+    total_outputs = outputs.count() + transfers.count() + active_requests.count()
+    borrowed = outputs.filter(status='borrowed').count() + active_requests.count()
+    returned = outputs.filter(status='returned').count()
+    overdue = outputs.filter(status='overdue').count()
+    transferred_combined = outputs.filter(status='transferred').count() + transfers.count()
+    
     return Response({
-        'total_outputs': outputs.count(),
-        'borrowed': outputs.filter(status='borrowed').count(),
-        'returned': outputs.filter(status='returned').count(),
-        'overdue': outputs.filter(status='overdue').count(),
-        'transferred': outputs.filter(status='transferred').count(),
+        'total_outputs': total_outputs,
+        'borrowed': borrowed,
+        'returned': returned,
+        'overdue': overdue,
+        'transferred': transferred_combined,
         'lost': outputs.filter(status='lost').count(),
         'damaged': outputs.filter(status='damaged').count(),
     })
@@ -607,3 +730,62 @@ def schedule_maintenance(request):
             )
         return Response(s.data, status=201)
     return Response(s.errors, status=400)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SETTINGS
+# ═══════════════════════════════════════════════════════════════════
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def category_list(request):
+    if request.method == 'GET':
+        categories = Category.objects.all()
+        return Response(CategorySerializer(categories, many=True).data)
+    
+    serializer = CategorySerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+def category_detail(request, pk):
+    try:
+        category = Category.objects.get(pk=pk)
+    except Category.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    category.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([AllowAny])
+def system_settings(request):
+    settings, created = SystemSetting.objects.get_or_create(id=1)
+    if request.method == 'GET':
+        return Response(SystemSettingSerializer(settings).data)
+    
+    serializer = SystemSettingSerializer(settings, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def platform_info(request):
+    import shutil
+    import platform
+    total, used, free = shutil.disk_usage("C:\\" if os.name == 'nt' else "/")
+    used_gb = round(used / (2**30), 2)
+    total_gb = round(total / (2**30), 2)
+    
+    return Response({
+        'platform_version': 'ESI-GM v1.2.0',
+        'db_status': 'Connected',
+        'storage_used': f"{used_gb} GB",
+        'storage_total': f"{total_gb} GB",
+        'os': platform.system(),
+        'python_version': platform.python_version()
+    })

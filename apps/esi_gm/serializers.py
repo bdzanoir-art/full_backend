@@ -7,7 +7,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from apps.core.models import (
-    Student, Project, TeamMembers, Material, Laboratory,
+    Student, Project, TeamMembers, Material, Laboratory, Category, SystemSetting,
     MaterialOutput, MaterialRequest, MaintenanceRecord, MaintenanceAlert, UserProfile
 )
 
@@ -176,9 +176,24 @@ class MaterialSerializer(serializers.ModelSerializer):
 
 
 class LaboratorySerializer(serializers.ModelSerializer):
+    materials_count = serializers.SerializerMethodField()
+    admin_name = serializers.SerializerMethodField()
+    admin_email = serializers.SerializerMethodField()
+
     class Meta:
         model = Laboratory
-        fields = ['id', 'name', 'code', 'location']
+        fields = ['id', 'name', 'code', 'location', 'materials_count', 'status', 'admin_name', 'admin_email']
+
+    def get_materials_count(self, obj):
+        return Material.objects.filter(location=obj.name).count()
+
+    def get_admin_name(self, obj):
+        if obj.admin:
+            return f"{obj.admin.first_name} {obj.admin.last_name}".strip() or obj.admin.username
+        return "N/A"
+
+    def get_admin_email(self, obj):
+        return obj.admin.email if obj.admin else "N/A"
 
 
 class MaterialRequestSerializer(serializers.ModelSerializer):
@@ -226,4 +241,18 @@ class MaintenanceAlertSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MaintenanceAlert
+        fields = '__all__'
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    materials_count = serializers.IntegerField(source='materials.count', read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'key', 'materials_count']
+
+
+class SystemSettingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemSetting
         fields = '__all__'

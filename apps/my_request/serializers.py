@@ -102,35 +102,28 @@ class MaterialRequestSerializer(serializers.ModelSerializer):
 
 class MaterialRequestCreateSerializer(serializers.ModelSerializer):
     items = serializers.ListField(child=serializers.DictField(), write_only=True)
-    project = serializers.DictField(write_only=True)
+    project_id = serializers.IntegerField(write_only=True)  # Changed: require existing project ID
 
     class Meta:
         model = MaterialRequest
-        fields = ['id', 'request_number', 'project', 'purpose', 'start_date',
+        fields = ['id', 'request_number', 'project_id', 'purpose', 'start_date',
                   'end_date', 'status', 'priority', 'notes', 'student_response', 'items']
         read_only_fields = ['request_number', 'status']
 
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
-        project_data = validated_data.pop('project', {})
+        project_id = validated_data.pop('project_id', None)
 
-        student = None
-        req = self.context.get('request', None)
-        if req and hasattr(req, 'user') and hasattr(req.user, 'student_profile'):
-            student = req.user.student_profile
-        if not student:
-            student = Student.objects.first()
-            if not student:
-                from django.contrib.auth.models import User as DUser
-                mock_user, _ = DUser.objects.get_or_create(username='mock_student')
-                student = Student.objects.create(user=mock_user, student_id='ESI-MOCK-001')
-
-        project_obj, _ = Project.objects.get_or_create(
-            name=project_data.get('name', 'Default Project'),
-            student=student,
-            defaults={'description': project_data.get('description', '')},
-        )
-        validated_data['project'] = project_obj
+        # Changed: Only use existing project - no auto-creation
+        if project_id:
+            try:
+                project_obj = Project.objects.get(id=project_id)
+                validated_data['project'] = project_obj
+            except Project.DoesNotExist:
+                raise serializers.ValidationError({'project_id': 'Project with this ID does not exist. Please create a project first.'})
+        else:
+            raise serializers.ValidationError({'project_id': 'Project ID is required. Please create a project first.'})
+        
         material_request = MaterialRequest.objects.create(**validated_data)
 
         default_cat, _ = Category.objects.get_or_create(name='Uncategorized')

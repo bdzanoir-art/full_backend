@@ -33,6 +33,7 @@ urlpatterns = [
     # Materials & Labs
     path('materials/',    views.get_materials,    name='esi_gm-materials'),
     path('laboratories/', views.laboratory_list,  name='esi_gm-laboratories'),
+    path('laboratories/<int:lab_id>/', views.laboratory_detail, name='esi_gm-laboratory-detail'),
 
     # Material Outputs
     path('material-outputs/',                          views.material_output_list,    name='esi_gm-outputs'),
@@ -49,4 +50,10 @@ urlpatterns = [
     path('maintenance/alerts/<int:alert_id>/resolve/',      views.resolve_alert,              name='esi_gm-resolve-alert'),
     path('maintenance/materials-needing/',                  views.materials_needing_maintenance, name='esi_gm-materials-needing'),
     path('maintenance/schedule/',                           views.schedule_maintenance,       name='esi_gm-schedule-maintenance'),
+
+    # Settings
+    path('settings/',                                   views.system_settings,            name='esi_gm-settings'),
+    path('categories/',                                 views.category_list,              name='esi_gm-categories'),
+    path('categories/<int:pk>/',                        views.category_detail,            name='esi_gm-category-detail'),
+    path('platform-info/',                              views.platform_info,              name='esi_gm-platform-info'),
 ]

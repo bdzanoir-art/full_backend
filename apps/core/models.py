@@ -54,7 +54,8 @@ class Material(models.Model):
     quantity_available = models.PositiveIntegerField(default=0) # alias for my_request
     unit = models.CharField(max_length=50, default='pieces')
     
-    location = models.CharField(max_length=200, blank=True, default='General Lab')
+    location = models.CharField(max_length=200, blank=True, default='Shelf A1')
+    laboratory = models.ForeignKey('Laboratory', on_delete=models.SET_NULL, null=True, blank=True, related_name="materials")
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Available')
     image = models.ImageField(upload_to="materials/", blank=True, null=True)
     
@@ -70,10 +71,15 @@ class Material(models.Model):
     def title(self):
         return self.name
 
+from django.contrib.auth.models import User
+
 class Laboratory(models.Model):
+    STATUS_CHOICES = [('Active', 'Active'), ('Maintenance', 'Maintenance'), ('Inactive', 'Inactive')]
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=20, unique=True)
     location = models.CharField(max_length=200, blank=True)
+    admin = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_labs')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
 
     def __str__(self):
         return self.name
@@ -104,7 +110,8 @@ class TeamMembers(models.Model):
 class MaterialRequest(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'),
-        ('completed', 'Completed'), ('cancelled', 'Cancelled'), ('Pending', 'Pending'),
+        ('ready', 'Ready'), ('in use', 'In Use'),
+        ('completed', 'Completed'), ('cancelled', 'Cancelled'),
     ]
     PRIORITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
 
@@ -238,6 +245,7 @@ class MaintenanceAlert(models.Model):
     title = models.CharField(max_length=200, blank=True)
     message = models.TextField(blank=True) # alias issue
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    quantity = models.PositiveIntegerField(default=1)
     is_resolved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
@@ -283,6 +291,25 @@ class TransferItem(models.Model):
     transfer = models.ForeignKey(Transfer, related_name='materials', on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     quantity = models.PositiveIntegerField(default=1)
+
+class SystemSetting(models.Model):
+    # System Info
+    platform_version = models.CharField(max_length=50, default='ESI-GM v1.0.0')
+    last_backup_date = models.DateField(null=True, blank=True)
+    
+    # Notifications
+    low_stock_alerts = models.BooleanField(default=True)
+    maintenance_reminders = models.BooleanField(default=True)
+    request_notifications = models.BooleanField(default=True)
+    
+    # UI Theme
+    primary_color = models.CharField(max_length=20, default='#6366f1')
+    accent_colors = models.JSONField(default=list) 
+    
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return "System Settings"
 
 # Aliases for compatibility with legacy inventory endpoints
 Request = MaterialRequest

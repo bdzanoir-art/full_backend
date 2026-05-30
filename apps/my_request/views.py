@@ -107,17 +107,32 @@ class MaterialRequestViewSet(viewsets.ModelViewSet):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated, IsStudentUser])
+@permission_classes([IsAuthenticated])
 def dashboard(request):
-    student = request.user.student_profile
+    # Gracefully handle users without a student_profile (e.g., admins)
+    if not hasattr(request.user, 'student_profile'):
+        # Try to find a student record by user_id
+        try:
+            student = Student.objects.get(user=request.user)
+        except Student.DoesNotExist:
+            # Return empty stats for non-student users instead of 403
+            return Response({
+                'total_requests': 0, 'pending_requests': 0,
+                'approved_requests': 0, 'completed_requests': 0,
+                'active_projects': 0, 'recent_requests': [],
+            })
+    else:
+        student = request.user.student_profile
+
+    requests_qs = MaterialRequest.objects.filter(student=student)
     return Response({
-        'total_requests':     MaterialRequest.objects.filter(student=student).count(),
-        'pending_requests':   MaterialRequest.objects.filter(student=student, status='pending').count(),
-        'approved_requests':  MaterialRequest.objects.filter(student=student, status='approved').count(),
-        'completed_requests': MaterialRequest.objects.filter(student=student, status='completed').count(),
-        'active_projects':    Project.objects.filter(student=student, status='active').count(),
+        'total_requests':     requests_qs.count(),
+        'pending_requests':   requests_qs.filter(status='pending').count(),
+        'approved_requests':  requests_qs.filter(status='approved').count(),
+        'completed_requests': requests_qs.filter(status='completed').count(),
+        'active_projects':    Project.objects.filter(student=student).count(),
         'recent_requests':    MaterialRequestSerializer(
-            MaterialRequest.objects.filter(student=student)[:5], many=True).data,
+            requests_qs.order_by('-created_at')[:5], many=True).data,
     })
 
 

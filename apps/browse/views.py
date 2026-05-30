@@ -13,10 +13,14 @@ def material_list(request):
     queryset = Material.objects.select_related("category").all()
     if search := request.query_params.get("search", "").strip():
         queryset = queryset.filter(
-            Q(title__icontains=search) | Q(description__icontains=search))
+            Q(name__icontains=search) | Q(description__icontains=search))
     if cat_key := request.query_params.get("category", "").strip():
         if cat_key != "all":
             queryset = queryset.filter(category__key=cat_key)
+            
+    if status_filter := request.query_params.get("status", "").strip():
+        if status_filter.lower() != "all":
+            queryset = queryset.filter(status__iexact=status_filter)
     return Response(MaterialSerializer(queryset, many=True, context={"request": request}).data)
 
 

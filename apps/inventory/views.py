@@ -7,35 +7,51 @@ projects, requests, material outputs, alerts, user profiles.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, status
+from rest_framework.permissions import AllowAny
 from django.db.models import Count, Sum
 from django.contrib.auth.models import User
 
-from apps.core.models import Material, Category, Request, MaintenanceAlert, UserProfile, Project, MaterialOutput
+from apps.core.models import Material, Category, Request, MaintenanceAlert, UserProfile, Project, MaterialOutput, Laboratory
 from .serializers import (
     RequestSerializer, MaintenanceAlertSerializer, CategorySerializer,
     MaterialSerializer, ProjectSerializer, UserProfileSerializer, MaterialOutputSerializer,
+    LaboratorySerializer,
 )
+
+
+class LaboratoryListView(generics.ListAPIView):
+    queryset = Laboratory.objects.all()
+    serializer_class = LaboratorySerializer
+    permission_classes = [AllowAny]
 
 
 class DashboardStatsView(APIView):
     def get(self, request):
         total_materials = Material.objects.aggregate(total=Sum('quantity'))['total'] or 0
-        available_items = Material.objects.filter(status='Available').aggregate(
-            total=Sum('quantity'))['total'] or 0
+        
+        # Available = Total units - (In Use units + Maintenance units + Damaged/Lost)
+        # Simplest way: Sum of quantity_available for materials that are NOT in a broken/lost status
+        available_items = Material.objects.exclude(
+            status__in=['Under Maintenance', 'Damaged', 'Lost']
+        ).aggregate(total=Sum('quantity_available'))['total'] or 0
 
         categories_query = Category.objects.annotate(count=Count('materials'))
         status_data = list(Material.objects.values('status').annotate(count=Count('id')))
         recent_requests = Request.objects.all().order_by('-created_at')[:5]
-        active_alerts = MaintenanceAlert.objects.filter(is_active=True).order_by('-created_at')[:5]
+        active_alerts = MaintenanceAlert.objects.filter(is_resolved=False).order_by('-created_at')[:5]
         user_counts = UserProfile.objects.values('role').annotate(count=Count('id'))
         role_map = {item['role']: item['count'] for item in user_counts}
 
         return Response({
+            'total_materials':    total_materials,
+            'available_items':    available_items,
+            'pending_requests':   Request.objects.filter(status='pending').count(),
+            'active_alerts':      MaintenanceAlert.objects.filter(is_resolved=False).count(),
             'stats': [
-                {'title': 'Total Materials',    'value': total_materials,   'note': '+12% this month', 'iconKey': 'browse',       'iconColor': '#6ea8ff'},
-                {'title': 'Available Items',    'value': available_items,   'note': '',                'iconKey': 'projects',     'iconColor': '#20c997'},
-                {'title': 'Pending Requests',   'value': Request.objects.filter(status='Pending').count(),         'note': '', 'iconKey': 'requests',     'iconColor': '#e8ab2f'},
-                {'title': 'Maintenance Alerts', 'value': MaintenanceAlert.objects.filter(is_active=True).count(),  'note': '', 'iconKey': 'maintenance',  'iconColor': '#ff6b81'},
+                {'title': 'Total Materials',    'value': total_materials,   'note': '+12% this month', 'iconKey': 'inventory',    'iconColor': '#6ea8ff'},
+                {'title': 'Available Items',    'value': available_items,   'note': 'In Stock',        'iconKey': 'package',      'iconColor': '#20c997'},
+                {'title': 'Pending Requests',   'value': Request.objects.filter(status='pending').count(), 'note': 'Awaiting Action', 'iconKey': 'requests',     'iconColor': '#e8ab2f'},
+                {'title': 'Maintenance Alerts', 'value': MaintenanceAlert.objects.filter(is_resolved=False).count(), 'note': 'Attention needed', 'iconKey': 'maintenance',  'iconColor': '#ff6b81'},
             ],
             'charts': {
                 'by_category': {
@@ -83,17 +99,24 @@ class CategoryListView(generics.ListAPIView):
     serializer_class = CategorySerializer
 
 
-class MaterialListView(generics.ListAPIView):
+class MaterialListView(generics.ListCreateAPIView):
     queryset = Material.objects.all()
     serializer_class = MaterialSerializer
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         queryset = super().get_queryset()
         if category := self.request.query_params.get('category'):
             queryset = queryset.filter(category_id=category)
         if search := self.request.query_params.get('search'):
-            queryset = queryset.filter(title__icontains=search)
+            queryset = queryset.filter(name__icontains=search)
         return queryset
+
+
+class MaterialDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Material.objects.all()
+    serializer_class = MaterialSerializer
+    permission_classes = [AllowAny]
 
 
 class ProjectListCreateView(generics.ListCreateAPIView):
@@ -109,6 +132,8 @@ class RequestListCreateView(generics.ListCreateAPIView):
         queryset = super().get_queryset().order_by('-created_at')
         if st := self.request.query_params.get('status'):
             queryset = queryset.filter(status=st)
+        if search := self.request.query_params.get('request_number'):
+            queryset = queryset.filter(request_number=search)
         return queryset
 
 
@@ -140,6 +165,42 @@ class RequestSlipView(APIView):
                 'qr_code': 'mock-qr-code-data',
                 'validation_date': req.created_at,
             })
+        except Request.DoesNotExist:
+            return Response({'error': 'Not found'}, status=404)
+
+
+class RequestUpdateStatusView(APIView):
+    def post(self, request, pk):
+        try:
+            req = Request.objects.get(pk=pk)
+            action = request.data.get('action', '').lower()
+            
+            # Map action strings to statuses
+            status_map = {
+                'validate': 'approved',
+                'approve': 'approved',
+                'reject': 'rejected',
+                'mark ready': 'ready',
+                'confirm pickup': 'in use',
+                'confirm return': 'completed',
+            }
+            
+            if new_status := status_map.get(action):
+                req.status = new_status
+                req.save()
+
+                # Sync Material status
+                if new_status == 'in use':
+                    for item in req.items.all():
+                        item.material.status = 'In Use'
+                        item.material.save()
+                elif new_status == 'completed':
+                    for item in req.items.all():
+                        item.material.status = 'Available'
+                        item.material.save()
+
+                return Response({'status': req.status})
+            return Response({'error': 'Invalid action'}, status=400)
         except Request.DoesNotExist:
             return Response({'error': 'Not found'}, status=404)
 
