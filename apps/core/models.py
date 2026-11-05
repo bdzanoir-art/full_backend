@@ -71,7 +71,6 @@ class Material(models.Model):
     def title(self):
         return self.name
 
-from django.contrib.auth.models import User
 
 class Laboratory(models.Model):
     STATUS_CHOICES = [('Active', 'Active'), ('Maintenance', 'Maintenance'), ('Inactive', 'Inactive')]
@@ -312,4 +311,4 @@ class SystemSetting(models.Model):
         return "System Settings"
 
 # Aliases for compatibility with legacy inventory endpoints
-Request = MaterialRequest
+Request = MaterialRequest 
